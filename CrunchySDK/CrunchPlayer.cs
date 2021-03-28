@@ -1,10 +1,13 @@
 ﻿using System;
 using System.Linq;
 using Health;
+using JetBrains.Annotations;
 using MelonLoader;
 using Photon.Pun;
+using Photon.Realtime;
+using Procedural.Scripts;
 using UnityEngine;
-using Valve.VR.InteractionSystem;
+using Player = Valve.VR.InteractionSystem.Player;
 
 namespace CrunchySDK
 {
@@ -22,11 +25,21 @@ namespace CrunchySDK
             get => _transform.position;
             set => _transform.position = value;
         }
+        public Vector3Int PositionInt
+        {
+            get => Vector3Int.RoundToInt(Position);
+            set => _transform.position = value;
+        }
 
         public Vector3 HeadPosition => GameObject
             .Find($"{name}/LocalPlayer/Armature/Root/Hips/Spine_01/Spine_02/Spine_03/Neck/Head").transform.position;
 
-        public float MaxHealth => _healthHandler.hitpointsMax;
+        public float MaxHealth
+        {
+            get => _healthHandler.hitpointsMax;
+            set => _healthHandler.hitpointsMax = value;
+        }
+
         public float Health
         {
             get => _healthHandler.hitpointsCurrent;
@@ -43,6 +56,8 @@ namespace CrunchySDK
                 }
             }
         }
+
+        [CanBeNull] public WalkableArea CurrentRoom => CrunchySdk.Map.GetSlot(PositionInt)?.room; 
 
         public void OnEnable()
         {

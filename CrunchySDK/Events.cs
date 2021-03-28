@@ -1,4 +1,5 @@
 ﻿using System;
+using Players;
 using Players.SteamVR;
 using Procedural.Scripts;
 
@@ -11,6 +12,11 @@ namespace CrunchySDK
 
         public Events()
         {
+            //I think this is also invoked when mission is successful, but haven't tested yet
+            PlayerTracker.missionFailed.AddListener((x) =>
+            {
+                InvokeMissionEndEvent();
+            });
         }
 
         #region Events
@@ -18,11 +24,24 @@ namespace CrunchySDK
         public event CrunchyEvent<FinalizePostProcessingStepEventArgs> FinalizePostProcessingStepEvent;
         public event CrunchyEvent<PreProcessingEventArgs> PreProcessingEvent;
         public event CrunchyEvent<NoArgs> MissionStartedEvent;
-
-        public event CrunchyEvent<PlayerSpawnEventArgs> PlayerSpawnEvent; 
+        public event CrunchyEvent<NoArgs> MissionEndEvent;
+        public event CrunchyEvent<PlayerSpawnEventArgs> PlayerSpawnEvent;
+        public event CrunchyEvent<EnemySpawnEventArgs> EnemySpawnEvent; 
         #endregion
 
         #region Invoke
+        internal void InvokeEnemySpawnEvent(CrunchEnemy enemy)
+        {
+            var ev = new EnemySpawnEventArgs
+            {
+                Enemy = enemy
+            };
+            EnemySpawnEvent?.Invoke(ev);
+        }
+        internal void InvokeMissionEndEvent()
+        {
+            MissionEndEvent?.Invoke(NoArgs.Singleton);
+        }
 
         internal void InvokePlayerSpawnEvent(CrunchPlayer player)
         {
@@ -79,6 +98,12 @@ namespace CrunchySDK
     #endregion
 
     #region EventArgs
+
+    public class EnemySpawnEventArgs : IEventArgs
+    {
+        public CrunchEnemy Enemy { get; internal set; }
+    }
+    
     public class PreProcessingEventArgs : IEventArgs, ICancellableEvent
     {
         public MapBuilder MapBuilder { get; internal set; }

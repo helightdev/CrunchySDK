@@ -3,52 +3,42 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text.RegularExpressions;
-using System.Threading;
 using System.Threading.Tasks;
-using CrunchySDK.Reactive;
+using Agent;
+using CrunchySDK.UI;
 using Game.Objectives;
 using Game.SceneInfo;
 using Harmony;
-using Interaction.Hands.Misc;
-using Interaction.VR;
 using Library.Actions;
 using MelonLoader;
-using Networking;
-using Networking.PlayerSpawning;
-using Photon.Pun;
-using Photon.Realtime;
 using UnityEngine;
-using Players;
 using Procedural.Scripts;
 using Procedural.Scripts.WaveFunctionCollapse;
 using Props.Truck;
-using Spawning;
 using UI;
 using UI.Mission_Terminal;
-using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using Valve.VR.InteractionSystem;
 using Object = UnityEngine.Object;
 using Player = Valve.VR.InteractionSystem.Player;
-using PlayerSpawner = Networking.PlayerSpawning.PlayerSpawner;
 
 namespace CrunchySDK
 {
     public class CrunchySdk : MelonMod
     {
         public static CrunchySdk instance;
-        public Dictionary<string,AssetBundle> AssetBundles { get; internal set; }
-        public static InfiniteMap Map{ get; internal set; }
+        public Dictionary<string, AssetBundle> AssetBundles { get; internal set; }
+        public static InfiniteMap Map { get; internal set; }
+        public static bool IsInMission { get; internal set; }
 
         //Prefabs
         public GameObject uiPrefab;
         public GameObject broadcastPrefab;
 
-        internal GameObject currentUi;
+        internal CrunchySDKUI currentUi = new CrunchySDKUI();
         internal bool assetsLoaded = false;
-        
+
         public CrunchySdk() => instance = this;
 
         public static async Task Enqueue(Action action)
@@ -61,7 +51,7 @@ namespace CrunchySDK
             }));
             await completionSource.Task;
         }
-        
+
         public override void OnApplicationStart()
         {
             MelonLogger.Log($"CrunchElementVersion: ${Application.version}");
@@ -80,14 +70,22 @@ namespace CrunchySDK
             };
             MelonLogger.Log("Redirected UnityLogOutput");
             CreateBundleDirectory();
+            CreateDependenciesDirectory();
+            MelonLogger.Log("Loading dependencies");
+            Directory.GetFiles("Dependencies").Where(x => x.EndsWith(".dll")).ForEach(x =>
+            {
+                var assembly = System.Reflection.Assembly.Load(File.ReadAllBytes(x));
+                MelonLogger.Log($"* Loaded dependency {assembly}");
+            });
 
             SceneManager.activeSceneChanged += (arg0, scene) =>
             {
+                MelonLogger.Log($"Switching scenes: {scene}");
                 SpawnPlayerNetworkedInTruckPatch.hasExecutedStart = false;
             };
-            
+
             Events.Instance.PreProcessingEvent += ev =>
-            { 
+            {
                 MelonLogger.Log("Starting Map Processing");
                 MelonLogger.Log($"Seed is {Seed.instance.seed}");
             };
@@ -99,14 +97,40 @@ namespace CrunchySDK
 
             Events.Instance.MissionStartedEvent += ev =>
             {
-                var self = CrunchPlayer.GetSelf();
-                self.Position = (self.Position += (Vector3.forward * 10));
+                IsInMission = true;
+                
             };
-            
+
+            Events.Instance.MissionEndEvent += ev =>
+            {
+                IsInMission = false;
+            };
+
             Events.Instance.PlayerSpawnEvent += ev =>
             {
                 MelonLogger.Log($"Player has been spawned: {ev.CrunchPlayer.name}");
             };
+
+            MelonCoroutines.Start(ScanForEnemies());
+        }
+
+        public IEnumerator ScanForEnemies()
+        {
+            while (true)
+            {
+                var enemies = Object.FindObjectsOfType<AgentFacade>();
+                CrunchEnemy.LivingEnemies = enemies.Length;
+                enemies.ForEach(agent =>
+                {
+                    var isRegistered = agent.gameObject.TryGetComponent(typeof(CrunchEnemy), out var ignored);
+                    if (!isRegistered)
+                    {
+                        var enemy = agent.gameObject.AddComponent<CrunchEnemy>();
+                        Events.Instance.InvokeEnemySpawnEvent(enemy);
+                    }
+                });
+                yield return new WaitForSeconds(0.1f);
+            }
         }
 
         public override void OnLevelWasLoaded(int level)
@@ -133,21 +157,30 @@ namespace CrunchySDK
             MelonLogger.Log(ConsoleColor.Yellow, $"Bundles: [{AssetBundles.Keys.Join(delimiter: ", ")}]");
             MelonLogger.Log("Finished loading AssetBundles");
         }
-        
+
         public static void CreateBundleDirectory() => Directory.CreateDirectory("Bundles");
+        public static void CreateDependenciesDirectory() => Directory.CreateDirectory("Dependencies");
 
         public override void OnFixedUpdate()
         {
             if (Input.GetKey(KeyCode.LeftControl) && Input.GetKeyDown(KeyCode.Q)) QuickJoin();
-            if (Input.GetKey(KeyCode.LeftControl) && Input.GetKeyDown(KeyCode.I)) MelonLogger.Log(CrunchPlayer.GetSelf());
-            if (Input.GetKey(KeyCode.LeftControl) && Input.GetKeyDown(KeyCode.B))
+            if (Input.GetKey(KeyCode.LeftControl) && Input.GetKeyDown(KeyCode.I))
+                MelonLogger.Log(CrunchPlayer.GetSelf());
+            if (Input.GetKey(KeyCode.LeftControl) && Input.GetKeyDown(KeyCode.N))
+            {
+                var player = CrunchPlayer.GetSelf();
+                player.MaxHealth = 9999999;
+                player.Health = 9999999;
+            }
+                if (Input.GetKey(KeyCode.LeftControl) && Input.GetKeyDown(KeyCode.B))
                 CreateTimedBroadcast(CrunchPlayer.GetSelf(), "This is an example broadcast!", null, null);
         }
 
         public async Task QuickJoin()
         {
             RoomUIManager roomManager = null;
-            await Enqueue(() => {
+            await Enqueue(() =>
+            {
                 roomManager = Object.FindObjectOfType<RoomUIManager>();
                 roomManager.Awake();
             });
@@ -166,20 +199,9 @@ namespace CrunchySDK
             await Task.Delay(TimeSpan.FromMilliseconds(500));
             await Enqueue(truck.OnAllPlayersEntered.Invoke);
         }
-        
-        public void CreateUI()
-        {
-            var playerTransform = Player.instance.leftHand.transform;
-            currentUi = Object.Instantiate(uiPrefab, playerTransform.TransformPoint(0.0f,0.0f, 0.5f), playerTransform.rotation);
-            var euler = currentUi.transform.rotation.eulerAngles;
-            euler.x += 45;
-            currentUi.AddComponent<UIPointerAttach>();
-            
-            currentUi.transform.rotation = Quaternion.Euler(euler);
-            currentUi.transform.SetParent(playerTransform);
-        }
 
         #region Broadcasts
+
         public GameObject CreateBroadcast(Vector3 position, Quaternion rotation, string text, Color? color)
         {
             var gameObject = GameObject.Instantiate(broadcastPrefab, position, rotation);
@@ -189,7 +211,8 @@ namespace CrunchySDK
             return gameObject;
         }
 
-        public async Task CreateTimedBroadcast(Vector3 position, Quaternion rotation, string text, Vector3? offset, TimeSpan? timeSpan,
+        public async Task CreateTimedBroadcast(Vector3 position, Quaternion rotation, string text, Vector3? offset,
+            TimeSpan? timeSpan,
             Color? color)
         {
             GameObject gameObject = null;
@@ -201,13 +224,13 @@ namespace CrunchySDK
             await Task.Delay(timeSpan.GetValueOrDefault(TimeSpan.FromSeconds(5)));
             await Enqueue(() => Object.Destroy(gameObject));
         }
-        
+
         public async Task CreateTimedBroadcast(CrunchPlayer player, string text, TimeSpan? timeSpan,
             Color? color)
         {
-            await CreateTimedBroadcast(player.HeadPosition, player.transform.rotation, text, Vector3.forward * 2, timeSpan, color);
+            await CreateTimedBroadcast(player.HeadPosition, player.transform.rotation, text, Vector3.forward * 2,
+                timeSpan, color);
         }
-        
 
         #endregion
     }

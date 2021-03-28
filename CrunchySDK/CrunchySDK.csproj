@@ -87,6 +87,7 @@
     </ItemGroup>
     <ItemGroup>
         <Compile Include="CrunchPlayer.cs" />
+        <Compile Include="CrunchEnemy.cs" />
         <Compile Include="CrunchySdk.cs" />
         <Compile Include="Events.cs" />
         <Compile Include="Patches\BuildAllSlotsPatch.cs" />
@@ -101,6 +102,11 @@
         <Compile Include="Reactive\ObserverBase.cs" />
         <Compile Include="Reactive\SubscribableBase.cs" />
         <Compile Include="Reactive\Unsubscriber.cs" />
+        <Compile Include="UI\CrunchySDKUI.cs" />
+        <Compile Include="UI\CrunchyUiReactivator.cs" />
+        <Compile Include="UI\ResetSelfButton.cs" />
+        <Compile Include="UI\TabController.cs" />
+        <Compile Include="Zombies\ZombiesModule.cs" />
     </ItemGroup>
     <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
     <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

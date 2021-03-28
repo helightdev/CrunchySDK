@@ -14,12 +14,12 @@ namespace CrunchySDK
             if (__instance.isPaused && !isCrunchyMenuOpen)
             {
                 isCrunchyMenuOpen = true;
-                CrunchySdk.instance.CreateUI();
+                CrunchySdk.instance.currentUi.Show();
                 return true;
             }  if (isCrunchyMenuOpen)
             {
                 isCrunchyMenuOpen = false;
-                Object.Destroy(CrunchySdk.instance.currentUi);
+                CrunchySdk.instance.currentUi.Hide();
                 return false;
             }
 
